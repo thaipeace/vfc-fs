@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vfc_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vfc_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vfc_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-vfc_farmer}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vfc_user} -d ${POSTGRES_DB:-vfc_farmer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vfc_net
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: vfc_pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vfc_user}:${POSTGRES_PASSWORD:-vfc_secret}@postgres:5432/${POSTGRES_DB:-vfc_farmer}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 2000
+      DEFAULT_POOL_SIZE: 50
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 10
+      RESERVE_POOL_TIMEOUT: 5
+      SERVER_IDLE_TIMEOUT: 600
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: ${POSTGRES_USER:-vfc_user}
+    ports:
+      - "5433:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vfc_net
+
+volumes:
+  postgres_data:
+
+networks:
+  vfc_net:
+    driver: bridge
