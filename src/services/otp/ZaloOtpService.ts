@@ -7,7 +7,7 @@ export class ZaloOtpService implements IOtpService {
     this.accessToken = accessToken;
   }
 
-  async sendOtp(phone: string, otp: string): Promise<boolean> {
+  async sendOtp(recipientId: string, otp: string, phone: string): Promise<boolean> {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] Zalo OTP for ${phone}: ${otp}`);
       return true;
@@ -21,9 +21,9 @@ export class ZaloOtpService implements IOtpService {
           access_token: this.accessToken,
         },
         body: JSON.stringify({
-          recipient: { user_id: phone },
+          recipient: { user_id: recipientId },
           message: {
-            text: `[VFC] Mã OTP của bạn là: ${otp}. Hết hạn sau 5 phút. Không chia sẻ mã này.`,
+            text: `[VFC] Mã OTP của bạn (${phone}) là: ${otp}. Hết hạn sau 5 phút. Không chia sẻ mã này.`,
           },
         }),
       });

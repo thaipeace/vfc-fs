@@ -7,9 +7,9 @@ export class TelegramOtpService implements IOtpService {
     this.botToken = botToken;
   }
 
-  async sendOtp(chatId: string, otp: string): Promise<boolean> {
+  async sendOtp(chatId: string, otp: string, phone: string): Promise<boolean> {
     const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
-    const message = `Mã VFC OTP của bạn là: ${otp}. Vui lòng không chia sẻ mã này.`;
+    const message = `Mã VFC OTP của bạn (${phone}) là: ${otp}. Vui lòng không chia sẻ mã này.`;
 
     try {
       const response = await fetch(url, {

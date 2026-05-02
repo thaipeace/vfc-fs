@@ -11,7 +11,7 @@ export class OtpController {
     this.service = service;
   }
 
-  async send(to: string, otp: string) {
-    return await this.service.sendOtp(to, otp);
+  async send(to: string, otp: string, phone: string) {
+    return await this.service.sendOtp(to, otp, phone);
   }
 }

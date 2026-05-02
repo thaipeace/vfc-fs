@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const otpController = new OtpController(otpService);
 
     // Gửi OTP
-    await otpController.send(target, otp);
+    await otpController.send(target, otp, phone);
     
     return Response.json({ success: true, message: "OTP đã được gửi" });
   } catch (err) {
