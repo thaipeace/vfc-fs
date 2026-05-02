@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 :root {
   --green-brand: #16a34a;
   --green-light: #dcfce7;
@@ -20,15 +24,15 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
   }
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-green-600 px-5 py-2.5 text-sm font-semibold text-green-600 transition hover:bg-green-50 active:scale-95 disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-green-600 px-4 py-2 text-sm font-semibold text-green-600 transition hover:bg-green-50 active:scale-95 disabled:opacity-50;
   }
   .input-field {
-    @apply w-full rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm placeholder:text-neutral-400 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200 transition;
+    @apply w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2 text-sm placeholder:text-neutral-400 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200 transition;
   }
   .card {
-    @apply rounded-2xl bg-white p-5 shadow-sm ring-1 ring-neutral-200/60;
+    @apply rounded-2xl bg-white p-4 shadow-sm ring-1 ring-neutral-200/60;
   }
 }

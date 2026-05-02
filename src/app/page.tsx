@@ -1,44 +1,243 @@
-import Link from "next/link";
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+
+type Step = "phone" | "otp";
 
 export default function HomePage() {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const otpRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+
+  async function handleSendOtp(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (step === "phone" && !agreed) {
+      setError("Bạn cần đồng ý với Điều khoản & Điều kiện");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Gửi OTP thất bại");
+      setStep("otp");
+      setOtp(["", "", "", ""]);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp(currentOtp: string[]) {
+    const fullOtp = currentOtp.join("");
+    if (fullOtp.length !== 4) return;
+
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp: fullOtp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Xác thực OTP thất bại");
+
+      const role: string = data.user?.role ?? "FARMER";
+      if (role === "ADMIN") router.replace("/admin");
+      else if (role === "SALE") router.replace("/sale");
+      else router.replace("/farmer");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
+      setOtp(["", "", "", ""]);
+      otpRefs[0].current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (isNaN(Number(value))) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.substring(value.length - 1);
+    setOtp(newOtp);
+
+    if (value && index < 3) {
+      otpRefs[index + 1].current?.focus();
+    }
+
+    if (newOtp.every(digit => digit !== "")) {
+      handleVerifyOtp(newOtp);
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      otpRefs[index - 1].current?.focus();
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-gradient-to-br from-green-50 via-white to-emerald-50 px-4">
-      {/* Hero */}
-      <div className="text-center">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-medium text-green-700">
-          🌱 Nông nghiệp thông minh
+    <main className="relative min-h-screen flex flex-col items-center px-8 pt-6 bg-[#0C4A3F] overflow-hidden font-sans">
+      {/* Background */}
+      <div className="absolute inset-0 z-0">
+        <Image
+          src="/assets/images/bg.svg"
+          alt="background"
+          fill
+          className="object-cover opacity-40"
+          priority
+        />
+      </div>
+
+      <div className="relative z-10 w-full max-w-sm flex flex-col items-center h-full min-h-[95vh]">
+        {/* Cancel Button */}
+        <div className="w-full flex justify-end min-h-[44px]">
+          {step === "otp" && (
+            <button 
+              onClick={() => { setStep("phone"); setOtp(["", "", "", ""]); }}
+              className="text-white text-lg font-bold py-2"
+            >
+              Hủy
+            </button>
+          )}
         </div>
-        <h1 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
-          VFC Farmer
-        </h1>
-        <p className="mt-3 max-w-xl text-neutral-500 sm:text-lg">
-          Chuẩn đoán bệnh cây bằng AI, tư vấn sản phẩm và đặt hàng nhanh chóng qua Zalo
-        </p>
-      </div>
 
-      {/* CTA */}
-      <div className="flex flex-col items-center gap-3 sm:flex-row">
-        <Link href="/login" className="btn-primary text-base px-7 py-3">
-          Đăng nhập bằng Zalo
-        </Link>
-        <Link href="/products" className="btn-outline text-base px-7 py-3">
-          Xem sản phẩm
-        </Link>
-      </div>
+        {/* Top Banner/Logo */}
+        <div className="w-full flex justify-center mb-8 mt-4">
+          <Image
+            src="/assets/images/banner.svg"
+            alt="VFC Banner"
+            width={220}
+            height={140}
+            className="drop-shadow-2xl"
+          />
+        </div>
 
-      {/* Feature cards */}
-      <div className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          { icon: "📷", title: "Chuẩn đoán AI", desc: "Chụp ảnh cây, AI phân tích bệnh tức thì" },
-          { icon: "🛒", title: "Đặt hàng nhanh", desc: "Chọn sản phẩm phù hợp, gửi sale xử lý" },
-          { icon: "💬", title: "Chat với Sale", desc: "Tư vấn trực tiếp qua Zalo, hỗ trợ 24/7" },
-        ].map((f) => (
-          <div key={f.title} className="card text-center">
-            <div className="mb-2 text-3xl">{f.icon}</div>
-            <div className="font-semibold text-neutral-800">{f.title}</div>
-            <div className="mt-1 text-sm text-neutral-500">{f.desc}</div>
+        {step === "phone" ? (
+          <>
+            <h1 className="text-3xl font-bold text-white mb-8 tracking-wider drop-shadow-md text-center">
+              ĐĂNG NHẬP
+            </h1>
+            <form onSubmit={handleSendOtp} className="w-full space-y-4">
+              <div className="space-y-1">
+                <label className="text-white text-sm font-medium">Số điện thoại*</label>
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-2 bg-white/90 rounded-md px-3 py-3 min-w-[90px] shadow-sm">
+                    <Image src="/assets/images/vn.svg" alt="VN" width={24} height={16} />
+                    <span className="text-gray-500 text-sm font-bold">+84</span>
+                  </div>
+                  <input
+                    type="tel"
+                    placeholder="Nhập vào số điện thoại"
+                    className="flex-1 bg-white/90 rounded-md px-4 py-3 outline-none text-gray-800 placeholder:text-gray-400 font-medium shadow-sm"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                  />
+                </div>
+                <p className="text-white/80 text-[11px] mt-2 italic text-center w-full">
+                  Ví dụ - 09X-xxx-xxxx
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-white/90 text-[11px] mb-3">
+                  Bằng cách tiếp tục, Bạn đồng ý với
+                </p>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="relative flex items-center">
+                    <input
+                      type="checkbox"
+                      className="w-5 h-5 rounded border-white/30 bg-transparent accent-[#FFD680] cursor-pointer shadow-inner"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                    />
+                  </div>
+                  <span className="text-white text-[11px] leading-relaxed">
+                    Bạn đã đồng ý với{" "}
+                    <span className="text-[#FFD680] font-bold underline underline-offset-2">Điều Khoản & Điều Kiện</span> và{" "}
+                    <span className="text-[#FFD680] font-bold underline underline-offset-2">Chính sách quyền riêng tư</span>
+                  </span>
+                </label>
+              </div>
+
+              {error && <p className="text-red-300 text-[11px] text-center font-bold">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={loading || !agreed}
+                className="w-full py-4 mt-6 bg-[#FFD680] text-[#0C4A3F] text-lg font-black rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 disabled:grayscale uppercase tracking-widest"
+              >
+                {loading ? "ĐANG GỬI..." : "ĐĂNG NHẬP"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <div className="w-full flex flex-col items-center">
+            <p className="text-white text-sm font-bold text-center mb-10 leading-relaxed px-4">
+              Nhập mã OTP gửi đến số điện thoại của bạn để kích hoạt OTP
+            </p>
+            
+            <div className="flex gap-4 mb-8">
+              {otp.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={otpRefs[index]}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  className="w-16 h-16 bg-gray-300 rounded-sm text-center text-3xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#FFD680]"
+                  value={digit}
+                  onChange={(e) => handleOtpChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  autoFocus={index === 0}
+                />
+              ))}
+            </div>
+
+            <button 
+              onClick={() => handleSendOtp()}
+              className="text-white font-bold underline underline-offset-4 mb-16 decoration-2"
+            >
+              Gửi lại mã OTP
+            </button>
+
+            <p className="text-white text-sm font-bold text-center px-6">
+              Vui lòng không tiết lộ OTP của bạn cho bất kỳ ai
+            </p>
+            
+            {error && <p className="text-red-300 text-sm mt-4 font-bold">{error}</p>}
+            {loading && <p className="text-white/70 text-sm mt-4 animate-pulse">Đang kiểm tra...</p>}
           </div>
-        ))}
+        )}
+
+        {/* Bottom Logo */}
+        <div className="mt-auto pt-12 pb-8 flex flex-col items-center">
+          <Image
+            src="/assets/images/logo.svg"
+            alt="VFC Logo"
+            width={180}
+            height={80}
+            className="drop-shadow-lg"
+          />
+          <p className="text-white text-[11px] font-black tracking-[0.2em] text-center mt-2 drop-shadow-sm">
+            GIÁ TRỊ ĐÍCH THỰC
+          </p>
+        </div>
       </div>
     </main>
   );

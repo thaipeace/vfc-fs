@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createOtpRecord } from "@/lib/otp";
-import { sendOtpViaZalo } from "@/lib/zalo";
+import { OtpController } from "@/controllers/OtpController";
+import { TelegramOtpService } from "@/services/otp/TelegramOtpService";
 
 const schema = z.object({
   phone: z.string().regex(/^(0|\+84)[3-9]\d{8}$/, "Số điện thoại không hợp lệ"),
+  chatId: z.string().optional(), // Thêm chatId cho Telegram
 });
 
 export async function POST(request: NextRequest) {
@@ -18,11 +20,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { phone } = parsed.data;
+  const { phone, chatId } = parsed.data;
 
   try {
     const otp = await createOtpRecord(phone);
-    await sendOtpViaZalo(phone, otp);
+    
+    // Khởi tạo service dựa trên cấu hình ENV
+    let otpService;
+    const provider = process.env.OTP_SERVICE_PROVIDER || 'telegram';
+    let target = chatId || phone;
+
+    if (provider === 'zalo') {
+      const { ZaloOtpService } = await import("@/services/otp/ZaloOtpService");
+      otpService = new ZaloOtpService(process.env.ZALO_OA_TOKEN!);
+    } else {
+      otpService = new TelegramOtpService(process.env.TELEGRAM_BOT_TOKEN!);
+      // Nếu có cố định Chat ID trong ENV thì dùng luôn, không quan trọng input
+      if (process.env.TELEGRAM_CHAT_ID) {
+        target = process.env.TELEGRAM_CHAT_ID;
+      }
+    }
+
+    const otpController = new OtpController(otpService);
+
+    // Gửi OTP
+    await otpController.send(target, otp);
+    
     return Response.json({ success: true, message: "OTP đã được gửi" });
   } catch (err) {
     console.error("[OTP Send Error]", err);

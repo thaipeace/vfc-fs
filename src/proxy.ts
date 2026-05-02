@@ -3,7 +3,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { Role } from "@prisma/client";
 
 // Route protection config
-const PUBLIC_PATHS = ["/", "/login", "/api/auth/otp/send", "/api/auth/otp/verify"];
+const PUBLIC_PATHS = ["/", "/assets", "/api/auth/otp/send", "/api/auth/otp/verify"];
 const ROLE_PATHS: Record<string, Role[]> = {
   "/admin": [Role.ADMIN],
   "/api/admin": [Role.ADMIN],
@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    loginUrl.pathname = "/";
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
   }

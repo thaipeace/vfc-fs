@@ -7,7 +7,7 @@ import { cookies } from "next/headers";
 
 const schema = z.object({
   phone: z.string().regex(/^(0|\+84)[3-9]\d{8}$/),
-  otp: z.string().length(6),
+  otp: z.string().length(4),
 });
 
 export async function POST(request: NextRequest) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export default function SaleLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -20,6 +21,9 @@ export default function SaleLayout({ children }: { children: React.ReactNode }) 
               {item.icon} {item.label}
             </Link>
           ))}
+          <div className="mt-auto pt-4 border-t">
+            <LogoutButton />
+          </div>
         </nav>
       </aside>
 

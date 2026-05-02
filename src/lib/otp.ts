@@ -5,7 +5,7 @@ const OTP_TTL_MINUTES = 5;
 const MAX_ATTEMPTS = 5;
 
 export function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
 export async function createOtpRecord(phone: string): Promise<string> {

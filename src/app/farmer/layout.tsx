@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export default function FarmerLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-neutral-50">
       {/* Top nav */}
       <header className="sticky top-0 z-40 border-b bg-white/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-2">
           <Link href="/farmer" className="flex items-center gap-2 font-bold text-green-700">
             🌿 VFC Farmer
           </Link>
@@ -13,12 +14,13 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
             <Link href="/farmer/diagnose" className="hover:text-green-600">Chuẩn đoán</Link>
             <Link href="/farmer/products" className="hover:text-green-600">Sản phẩm</Link>
             <Link href="/farmer/orders" className="hover:text-green-600">Đơn hàng</Link>
+            <LogoutButton />
           </nav>
         </div>
       </header>
 
       {/* Content */}
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-4">
         {children}
       </main>
 
