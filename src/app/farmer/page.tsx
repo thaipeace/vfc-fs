@@ -99,7 +99,7 @@ export default function FarmerHomePage() {
         ) : (
           <Link
             href="/farmer/crops/select"
-            className="w-full py-4 bg-[#FFD680] text-[#0C4A3F] text-sm font-black rounded-lg text-center transition-all active:scale-[0.98] uppercase shadow-lg"
+            className="w-full p-2 mb-2 bg-[#FFD680] text-[#0C4A3F] text-sm font-black rounded-lg text-center transition-all active:scale-[0.98] uppercase shadow-lg"
           >
             Thêm loại cây trồng
           </Link>
