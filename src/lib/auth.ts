@@ -1,11 +1,13 @@
 import * as jose from "jose";
-export enum Role {
-  FARMER = "FARMER",
-  SALE = "SALE",
-  ADMIN = "ADMIN",
-  AGENCY = "AGENCY",
-  MDO = "MDO",
-}
+export const Role = {
+  FARMER: "FARMER",
+  SALE: "SALE",
+  ADMIN: "ADMIN",
+  AGENCY: "AGENCY",
+  MDO: "MDO",
+} as const;
+
+export type Role = (typeof Role)[keyof typeof Role];
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 const JWT_EXPIRES = "7d";
