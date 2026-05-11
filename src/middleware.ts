@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken, COOKIE_NAME } from "@/lib/auth";
-import { Role } from "@prisma/client";
+import { verifyToken, COOKIE_NAME, Role } from "@/lib/auth";
 
 // Route protection config
 const PUBLIC_PATHS = ["/", "/assets", "/api/auth/otp/send", "/api/auth/otp/verify"];

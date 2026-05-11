@@ -1,5 +1,11 @@
 import * as jose from "jose";
-import { Role } from "@prisma/client";
+export enum Role {
+  FARMER = "FARMER",
+  SALE = "SALE",
+  ADMIN = "ADMIN",
+  AGENCY = "AGENCY",
+  MDO = "MDO",
+}
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 const JWT_EXPIRES = "7d";
