@@ -5,7 +5,7 @@ import { DiagnosisStatus } from "@prisma/client";
 
 // POST /api/diagnoses — farmer submits photo for AI diagnosis
 export async function POST(request: NextRequest) {
-  const user = getRequestUser(request);
+  const user = await getRequestUser(request);
   if (!user) return apiError("UNAUTHORIZED", 401);
 
   const formData = await request.formData().catch(() => null);
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
 // GET /api/diagnoses — farmer sees own diagnoses
 export async function GET(request: NextRequest) {
-  const user = getRequestUser(request);
+  const user = await getRequestUser(request);
   if (!user) return apiError("UNAUTHORIZED", 401);
 
   const { searchParams } = request.nextUrl;

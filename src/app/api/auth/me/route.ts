@@ -1,21 +1,38 @@
 import { NextRequest } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(_req: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
-  const session = token ? verifyToken(token) : null;
+  const session = token ? await verifyToken(token) : null;
 
   if (!session) {
     return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+
+  if (!user || user.sessionToken !== session.sessionId) {
+    return Response.json(
+      {
+        error: "UNAUTHORIZED",
+        debug: {
+          dbToken: user?.sessionToken?.slice(0, 8),
+          jwtToken: session.sessionId?.slice(0, 8),
+        },
+      },
+      { status: 401 },
+    );
+  }
+
   return Response.json({
     user: {
-      id: session.sub,
-      phone: session.phone,
-      role: session.role,
+      id: user.id,
+      phone: user.phone,
+      role: user.role,
+      name: user.name,
     },
   });
 }

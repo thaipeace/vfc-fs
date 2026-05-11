@@ -5,7 +5,6 @@ import { Role } from "@prisma/client";
 // Route protection config
 const PUBLIC_PATHS = ["/", "/assets", "/api/auth/otp/send", "/api/auth/otp/verify"];
 const ROLE_PATHS: Record<string, Role[]> = {
-  "/admin": [Role.ADMIN],
   "/api/admin": [Role.ADMIN],
   "/sale": [Role.SALE, Role.ADMIN],
   "/api/sale": [Role.SALE, Role.ADMIN],
@@ -15,7 +14,7 @@ function matchesPrefix(pathname: string, prefixes: string[]): boolean {
   return prefixes.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
@@ -25,7 +24,9 @@ export async function proxy(request: NextRequest) {
 
   // Get token from cookie
   const token = request.cookies.get(COOKIE_NAME)?.value;
-  const session = token ? verifyToken(token) : null;
+  const session = token ? await verifyToken(token) : null;
+
+  console.log(`[Middleware] Path: ${pathname}, Token: ${!!token}, Session: ${!!session}`);
 
   // Not authenticated → redirect to login
   if (!session) {
@@ -53,6 +54,9 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-user-id", session.sub);
   requestHeaders.set("x-user-role", session.role);
   requestHeaders.set("x-user-phone", session.phone);
+  if (session.sessionId) {
+    requestHeaders.set("x-user-session", session.sessionId);
+  }
 
   return NextResponse.next({ request: { headers: requestHeaders } });
 }

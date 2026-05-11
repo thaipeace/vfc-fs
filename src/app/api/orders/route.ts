@@ -22,7 +22,7 @@ const createSchema = z.object({
 
 // GET /api/orders — farmer sees own, sale/admin sees all
 export async function GET(request: NextRequest) {
-  const user = getRequestUser(request);
+  const user = await getRequestUser(request);
   if (!user) return apiError("UNAUTHORIZED", 401);
 
   const { searchParams } = request.nextUrl;
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/orders — create order (farmer only)
 export async function POST(request: NextRequest) {
-  const user = getRequestUser(request);
+  const user = await getRequestUser(request);
   if (!user) return apiError("UNAUTHORIZED", 401);
   if (user.role !== Role.FARMER) return apiError("FORBIDDEN", 403);
 

@@ -11,16 +11,26 @@ interface Crop {
 }
 
 export default function FarmerHomePage() {
+  const [user, setUser] = useState<{ name: string | null } | null>(null);
   const [myCrops, setMyCrops] = useState<Crop[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchMyCrops() {
+    async function fetchData() {
       try {
-        const res = await fetch("/api/farmer/crops");
-        if (res.ok) {
-          const data = await res.json();
+        const [cropsRes, userRes] = await Promise.all([
+          fetch("/api/farmer/crops"),
+          fetch("/api/auth/me"),
+        ]);
+
+        if (cropsRes.ok) {
+          const data = await cropsRes.json();
           setMyCrops(data);
+        }
+
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          setUser(userData.user);
         }
       } catch (err) {
         console.error("Fetch error:", err);
@@ -28,13 +38,15 @@ export default function FarmerHomePage() {
         setLoading(false);
       }
     }
-    fetchMyCrops();
+    fetchData();
   }, []);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="card bg-gradient-to-r from-green-600 to-emerald-500 text-white p-4 rounded-2xl shadow-lg">
-        <h2 className="text-xl font-bold">Xin chào, Nông dân! 👋</h2>
+        <h2 className="text-xl font-bold">
+          Xin chào, {user?.name || "Nông dân"}! 👋
+        </h2>
         <p className="mt-1 text-sm text-green-500">
           Cây của bạn hôm nay thế nào?
         </p>
@@ -99,7 +111,7 @@ export default function FarmerHomePage() {
         ) : (
           <Link
             href="/farmer/crops/select"
-            className="w-full p-2 mb-2 bg-[#FFD680] text-[#0C4A3F] text-sm font-black rounded-lg text-center transition-all active:scale-[0.98] uppercase shadow-lg"
+            className="w-full p-2 mb-4 bg-[#FFD680] text-[#0C4A3F] text-sm font-black rounded-lg text-center transition-all active:scale-[0.98] uppercase shadow-lg"
           >
             Thêm loại cây trồng
           </Link>
@@ -111,7 +123,7 @@ export default function FarmerHomePage() {
           href="/farmer/diagnose"
           className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-green-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
         >
-          <span className="text-3xl">📷</span>
+          <span className="text-3xl">📸</span>
           <div>
             <span className="font-bold text-sm block">Chuẩn đoán bệnh</span>
             <span className="text-[10px] text-neutral-500">
@@ -123,7 +135,7 @@ export default function FarmerHomePage() {
           href="/farmer/orders"
           className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-green-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
         >
-          <span className="text-3xl">🛒</span>
+          <span className="text-3xl">📦</span>
           <div>
             <span className="font-bold text-sm block">Đơn hàng của tôi</span>
             <span className="text-[10px] text-neutral-500">
@@ -131,6 +143,20 @@ export default function FarmerHomePage() {
             </span>
           </div>
         </Link>
+        <a
+          href="https://map.vfcnongdan.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-blue-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
+        >
+          <span className="text-3xl">📍</span>
+          <div>
+            <span className="font-bold text-sm block">Bản đồ</span>
+            <span className="text-[10px] text-neutral-500">
+              Vùng trồng VFC
+            </span>
+          </div>
+        </a>
       </div>
     </div>
   );

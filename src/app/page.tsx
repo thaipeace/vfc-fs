@@ -14,7 +14,28 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
-  const otpRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+  const otpRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    async function checkSession() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          router.push("/farmer");
+          router.refresh();
+        }
+      } catch (err) {
+        // Not logged in
+      }
+    }
+    checkSession();
+  }, []);
 
   async function handleSendOtp(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -56,10 +77,10 @@ export default function HomePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Xác thực OTP thất bại");
 
-      const role: string = data.user?.role ?? "FARMER";
-      if (role === "ADMIN") router.replace("/admin");
-      else if (role === "SALE") router.replace("/sale");
-      else router.replace("/farmer");
+      console.log("Login success, role:", data.user?.role);
+      
+      router.refresh();
+      router.push("/farmer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
       setOtp(["", "", "", ""]);
@@ -79,7 +100,7 @@ export default function HomePage() {
       otpRefs[index + 1].current?.focus();
     }
 
-    if (newOtp.every(digit => digit !== "")) {
+    if (newOtp.every((digit) => digit !== "")) {
       handleVerifyOtp(newOtp);
     }
   };
@@ -87,6 +108,26 @@ export default function HomePage() {
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs[index - 1].current?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (!pastedData) return;
+
+    const newOtp = ["", "", "", ""];
+    const digits = pastedData.split("");
+    digits.forEach((digit, i) => {
+      newOtp[i] = digit;
+    });
+    setOtp(newOtp);
+
+    const nextIndex = Math.min(digits.length, 3);
+    otpRefs[nextIndex].current?.focus();
+
+    if (newOtp.every((digit) => digit !== "")) {
+      handleVerifyOtp(newOtp);
     }
   };
 
@@ -107,8 +148,11 @@ export default function HomePage() {
         {/* Cancel Button */}
         <div className="w-full flex justify-end min-h-[44px]">
           {step === "otp" && (
-            <button 
-              onClick={() => { setStep("phone"); setOtp(["", "", "", ""]); }}
+            <button
+              onClick={() => {
+                setStep("phone");
+                setOtp(["", "", "", ""]);
+              }}
               className="text-white text-lg font-bold py-2"
             >
               Hủy
@@ -134,16 +178,14 @@ export default function HomePage() {
             </h1>
             <form onSubmit={handleSendOtp} className="w-full space-y-4">
               <div className="space-y-1">
-                <label className="text-white text-sm font-medium">Số điện thoại*</label>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-2 bg-white/90 rounded-md px-3 py-3 min-w-[90px] shadow-sm">
-                    <Image src="/assets/images/vn.svg" alt="VN" width={24} height={16} />
-                    <span className="text-gray-500 text-sm font-bold">+84</span>
-                  </div>
+                <label className="text-white text-sm font-medium">
+                  Số điện thoại*
+                </label>
+                <div className="flex w-full">
                   <input
                     type="tel"
                     placeholder="Nhập vào số điện thoại"
-                    className="flex-1 bg-white/90 rounded-md px-4 py-3 outline-none text-gray-800 placeholder:text-gray-400 font-medium shadow-sm"
+                    className="w-full bg-white/90 rounded-md px-4 py-3 outline-none text-gray-800 placeholder:text-gray-400 font-medium shadow-sm"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     required
@@ -169,13 +211,22 @@ export default function HomePage() {
                   </div>
                   <span className="text-white text-[11px] leading-relaxed">
                     Bạn đã đồng ý với{" "}
-                    <span className="text-[#FFD680] font-bold underline underline-offset-2">Điều Khoản & Điều Kiện</span> và{" "}
-                    <span className="text-[#FFD680] font-bold underline underline-offset-2">Chính sách quyền riêng tư</span>
+                    <span className="text-[#FFD680] font-bold underline underline-offset-2">
+                      Điều Khoản & Điều Kiện
+                    </span>{" "}
+                    và{" "}
+                    <span className="text-[#FFD680] font-bold underline underline-offset-2">
+                      Chính sách quyền riêng tư
+                    </span>
                   </span>
                 </label>
               </div>
 
-              {error && <p className="text-red-300 text-[11px] text-center font-bold">{error}</p>}
+              {error && (
+                <p className="text-red-300 text-[11px] text-center font-bold">
+                  {error}
+                </p>
+              )}
 
               <button
                 type="submit"
@@ -191,7 +242,7 @@ export default function HomePage() {
             <p className="text-white text-sm font-bold text-center mb-10 leading-relaxed px-4">
               Nhập mã OTP gửi đến số điện thoại của bạn để kích hoạt OTP
             </p>
-            
+
             <div className="flex gap-4 mb-8">
               {otp.map((digit, index) => (
                 <input
@@ -204,12 +255,13 @@ export default function HomePage() {
                   value={digit}
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(index, e)}
+                  onPaste={handlePaste}
                   autoFocus={index === 0}
                 />
               ))}
             </div>
 
-            <button 
+            <button
               onClick={() => handleSendOtp()}
               className="text-white font-bold underline underline-offset-4 mb-16 decoration-2"
             >
@@ -219,9 +271,15 @@ export default function HomePage() {
             <p className="text-white text-sm font-bold text-center px-6">
               Vui lòng không tiết lộ OTP của bạn cho bất kỳ ai
             </p>
-            
-            {error && <p className="text-red-300 text-sm mt-4 font-bold">{error}</p>}
-            {loading && <p className="text-white/70 text-sm mt-4 animate-pulse">Đang kiểm tra...</p>}
+
+            {error && (
+              <p className="text-red-300 text-sm mt-4 font-bold">{error}</p>
+            )}
+            {loading && (
+              <p className="text-white/70 text-sm mt-4 animate-pulse">
+                Đang kiểm tra...
+              </p>
+            )}
           </div>
         )}
 

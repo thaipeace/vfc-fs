@@ -7,7 +7,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = getRequestUser(request);
+  const user = await getRequestUser(request);
   if (!user) return apiError("UNAUTHORIZED", 401);
 
   const { id } = await params;

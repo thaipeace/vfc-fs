@@ -1,24 +1,30 @@
-import jwt from "jsonwebtoken";
+import * as jose from "jose";
 import { Role } from "@prisma/client";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 const JWT_EXPIRES = "7d";
 
 export type SessionPayload = {
   sub: string;       // userId
   phone: string;
   role: Role;
+  sessionId?: string;
   iat?: number;
   exp?: number;
 };
 
-export function signToken(payload: Omit<SessionPayload, "iat" | "exp">): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+export async function signToken(payload: Omit<SessionPayload, "iat" | "exp">): Promise<string> {
+  return await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(JWT_EXPIRES)
+    .sign(JWT_SECRET);
 }
 
-export function verifyToken(token: string): SessionPayload | null {
+export async function verifyToken(token: string): Promise<SessionPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as SessionPayload;
+    const { payload } = await jose.jwtVerify(token, JWT_SECRET);
+    return payload as unknown as SessionPayload;
   } catch {
     return null;
   }

@@ -1,22 +1,48 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
 export default function AdminDashboard() {
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setRole(d.user?.role ?? "FARMER"))
+      .catch(() => {});
+  }, []);
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-neutral-800">Admin Dashboard</h1>
-      <p className="mt-1 text-sm text-neutral-500">Tổng quan hệ thống VFC Farmer</p>
+      <p className="mt-1 text-sm text-neutral-500">Quản lý hệ thống VFC Farmer</p>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Tổng nông dân", icon: "👨‍🌾", color: "text-green-600", bg: "bg-green-50" },
-          { label: "Tổng đơn hàng", icon: "🛒", color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Chuẩn đoán AI", icon: "📷", color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Doanh thu", icon: "💰", color: "text-amber-600", bg: "bg-amber-50" },
-        ].map((s) => (
-          <div key={s.label} className={`card ${s.bg}`}>
-            <div className={`text-3xl ${s.color}`}>{s.icon}</div>
-            <div className="mt-2 text-2xl font-bold text-neutral-700">—</div>
-            <div className="mt-0.5 text-xs text-neutral-500">{s.label}</div>
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-neutral-800 mb-4">Ứng dụng</h2>
+
+        {role === "ADMIN" ? (
+          <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+            <Link href="/admin/system/users" className="flex flex-col items-center gap-2 group">
+              <div className="aspect-square w-full relative rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200 overflow-hidden transition group-hover:shadow-md group-active:scale-95">
+                <Image
+                  src="/assets/images/user-icon.png"
+                  alt="Quản lý người dùng"
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <span className="text-xs font-medium text-neutral-600 text-center">Quản lý người dùng</span>
+            </Link>
           </div>
-        ))}
+        ) : role !== null ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center text-neutral-400">
+            <span className="text-5xl mb-4">🔒</span>
+            <p className="text-sm font-medium">Bạn chưa có ứng dụng nào được phân quyền.</p>
+            <p className="text-xs mt-1">Vui lòng liên hệ quản trị viên để được cấp quyền.</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

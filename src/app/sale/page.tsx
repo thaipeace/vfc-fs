@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function SaleDashboard() {
   return (
     <div>
@@ -15,6 +17,28 @@ export default function SaleDashboard() {
             <div className="mt-1 text-sm text-neutral-600">{s.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-neutral-800 mb-4">Ứng dụng</h2>
+        <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+          <a
+            href="https://map.vfcnongdan.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center gap-2 group"
+          >
+            <div className="aspect-square w-full relative rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200 overflow-hidden transition group-hover:shadow-md group-active:scale-95">
+              <Image
+                src="/assets/images/map-icon.png"
+                alt="Bản đồ"
+                fill
+                className="object-cover"
+              />
+            </div>
+            <span className="text-xs font-medium text-neutral-600 text-center">Bản đồ</span>
+          </a>
+        </div>
       </div>
     </div>
   );
