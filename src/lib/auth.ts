@@ -4,6 +4,7 @@ export const Role = {
   SALE: "SALE",
   ADMIN: "ADMIN",
   AGENCY: "AGENCY",
+  SUPER_AGENT: "SUPER_AGENT",
   MDO: "MDO",
   SE: "SE",
   BGD: "BGD",

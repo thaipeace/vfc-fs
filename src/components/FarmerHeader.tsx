@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { LogoutButton } from "@/components/LogoutButton";
 
-const NON_FARMER_ROLES = ["ADMIN", "SALE", "AGENCY", "MDO", "SE", "BGD"];
+const NON_FARMER_ROLES = ["ADMIN", "SALE", "AGENCY", "SUPER_AGENT", "MDO", "SE", "BGD"];
 
 export function FarmerHeader() {
   const [role, setRole] = useState<string | null>(null);

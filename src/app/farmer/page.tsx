@@ -3,31 +3,19 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-
-interface Crop {
-  id: string;
-  name: string;
-  imageUrl?: string;
-}
+import { Camera, Package, MapPin, Plus, Sprout } from "lucide-react";
+import { useCropStore } from "@/store/useCropStore";
 
 export default function FarmerHomePage() {
   const [user, setUser] = useState<{ name: string | null } | null>(null);
-  const [myCrops, setMyCrops] = useState<Crop[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { userCrops, fetchUserCrops, isLoading: cropsLoading } = useCropStore();
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [cropsRes, userRes] = await Promise.all([
-          fetch("/api/farmer/crops"),
-          fetch("/api/auth/me"),
-        ]);
-
-        if (cropsRes.ok) {
-          const data = await cropsRes.json();
-          setMyCrops(data);
-        }
-
+        fetchUserCrops();
+        const userRes = await fetch("/api/auth/me");
         if (userRes.ok) {
           const userData = await userRes.json();
           setUser(userData.user);
@@ -35,26 +23,30 @@ export default function FarmerHomePage() {
       } catch (err) {
         console.error("Fetch error:", err);
       } finally {
-        setLoading(false);
+        setLoadingUser(false);
       }
     }
     fetchData();
-  }, []);
+  }, [fetchUserCrops]);
+
+  const loading = loadingUser || cropsLoading;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="card bg-gradient-to-r from-green-600 to-emerald-500 text-white p-4 rounded-2xl shadow-lg">
-        <h2 className="text-xl font-bold">
-          Xin chào, {user?.name || "Nông dân"}! 👋
-        </h2>
-        <p className="mt-1 text-sm text-green-500">
-          Cây của bạn hôm nay thế nào?
-        </p>
+      <div className="card flex justify-between items-center bg-gradient-to-r from-green-600 to-emerald-500 text-white p-4 rounded-2xl shadow-lg">
+        <div>
+          <h2 className="text-xl font-bold">
+            Xin chào, {user?.name || "Nông dân"}! 👋
+          </h2>
+          <p className="mt-1 text-sm text-green-500">
+            Cây của bạn hôm nay thế nào?
+          </p>
+        </div>
         <Link
           href="/farmer/diagnose"
-          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-green-700 hover:bg-green-50 transition shadow-sm"
+          className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-green-700 hover:bg-green-50 transition shadow-sm"
         >
-          📷 Chuẩn đoán ngay
+          <Camera size={30} />
         </Link>
       </div>
 
@@ -69,41 +61,38 @@ export default function FarmerHomePage() {
           <div className="h-20 flex items-center justify-center">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FFD680]"></div>
           </div>
-        ) : myCrops.length > 0 ? (
-          <div className="flex overflow-x-auto gap-3 pt-1 snap-x">
+        ) : userCrops.length > 0 ? (
+          <div className="flex overflow-x-auto gap-3 pt-1 pb-4 snap-x scrollbar-hide">
             <Link
               href="/farmer/crops/select"
               className="flex flex-col items-center gap-1.5 shrink-0 snap-start w-[54px] group"
             >
               <div className="w-[50px] h-[50px] rounded-full bg-white/5 border border-dashed border-white/30 flex items-center justify-center transition-colors group-hover:bg-white/10">
-                <span className="text-lg text-white/50">+</span>
-              </div>
-              <div className="px-1 py-0.5 w-full">
-                <span className="block text-[8px] font-bold text-center text-white/50 leading-tight">
-                  Thêm
-                </span>
+                <Plus className="text-white/50" size={20} />
               </div>
             </Link>
-            {myCrops.map((crop) => (
+            {userCrops.map((crop) => (
               <div
                 key={crop.id}
                 className="flex flex-col items-center gap-1.5 shrink-0 snap-start w-[54px]"
               >
-                <div className="relative w-[50px] h-[50px] rounded-full overflow-hidden ring-1 ring-[#FFD680] bg-white/10 flex items-center justify-center">
-                  <span className="text-xl">🌱</span>
-                  {crop.imageUrl && (
-                    <Image
-                      src={crop.imageUrl}
-                      alt={crop.name}
-                      fill
-                      className="object-cover"
-                    />
-                  )}
-                </div>
-                <div className="bg-black/30 rounded px-1 py-0.5 w-full">
-                  <span className="block text-[8px] font-bold text-center text-white leading-tight break-words">
-                    {crop.name}
-                  </span>
+                <div className="relative w-[50px] h-[50px]">
+                  <div className="w-full h-full rounded-full overflow-hidden ring-1 ring-[#FFD680] bg-white/10 flex items-center justify-center">
+                    <Sprout className="text-[#FFD680]/50" size={24} />
+                    {crop.imageUrl && (
+                      <Image
+                        src={crop.imageUrl}
+                        alt={crop.name}
+                        fill
+                        className="object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
+                    <span className="block text-[7px] font-bold text-center text-white leading-tight break-words px-1.5">
+                      {crop.name}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -123,7 +112,9 @@ export default function FarmerHomePage() {
           href="/farmer/diagnose"
           className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-green-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
         >
-          <span className="text-3xl">📸</span>
+          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mb-1">
+            <Camera className="text-green-600" size={24} />
+          </div>
           <div>
             <span className="font-bold text-sm block">Chuẩn đoán bệnh</span>
             <span className="text-[10px] text-neutral-500">
@@ -135,7 +126,9 @@ export default function FarmerHomePage() {
           href="/farmer/orders"
           className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-green-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
         >
-          <span className="text-3xl">📦</span>
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-1">
+            <Package className="text-blue-600" size={24} />
+          </div>
           <div>
             <span className="font-bold text-sm block">Đơn hàng của tôi</span>
             <span className="text-[10px] text-neutral-500">
@@ -149,12 +142,12 @@ export default function FarmerHomePage() {
           rel="noopener noreferrer"
           className="card flex flex-col items-center gap-2 p-4 text-center hover:ring-2 hover:ring-blue-400 transition-all bg-white border border-neutral-100 shadow-sm rounded-2xl"
         >
-          <span className="text-3xl">📍</span>
+          <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mb-1">
+            <MapPin className="text-orange-600" size={24} />
+          </div>
           <div>
             <span className="font-bold text-sm block">Bản đồ</span>
-            <span className="text-[10px] text-neutral-500">
-              Vùng trồng VFC
-            </span>
+            <span className="text-[10px] text-neutral-500">Vùng trồng VFC</span>
           </div>
         </a>
       </div>

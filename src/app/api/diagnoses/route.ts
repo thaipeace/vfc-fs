@@ -21,17 +21,25 @@ export async function POST(request: NextRequest) {
   // Save actual files to public/uploads
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
+  const sharp = (await import("sharp")).default;
   const uploadDir = path.join(process.cwd(), "public", "uploads");
   
   // Ensure directory exists
   await fs.mkdir(uploadDir, { recursive: true });
 
   for (const file of files) {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const name = `${Date.now()}_${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
+    let buffer: any = Buffer.from(await file.arrayBuffer());
+    const name = `${Date.now()}_${file.name.replace(/[^a-z0-9.]/gi, "_")}.jpg`;
     const filePath = path.join(uploadDir, name);
     
-    await fs.writeFile(filePath, buffer);
+    // Optimize image: resize to max 512px and compress aggressively
+    await sharp(buffer)
+      .resize(512, 512, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 60 })
+      .toFile(filePath);
+
+    // Free up buffer memory
+    buffer = null;
     imageUrls.push(`/uploads/${name}`);
   }
 
@@ -87,53 +95,75 @@ async function runAiDiagnosis(
   imageUrls: string[],
   cropType?: string
 ) {
+  // 1. Fetch all available products and their targets for AI context
+  const allProducts = await prisma.product.findMany({
+    where: { isActive: true },
+    include: { detail: true },
+  });
+
+  const productContext = allProducts.map(p => ({
+    id: p.id,
+    name: p.name,
+    targets: p.detail?.targetDiseases || ""
+    // Dropped 'usage' to save huge amounts of memory in JSON stringification
+  }));
+
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL ?? "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ 
+    model: "gemini-flash-latest" 
+  });
 
-  const prompt = `Bạn là chuyên gia nông nghiệp. Hãy phân tích hình ảnh cây trồng${cropType ? ` (loại: ${cropType})` : ""} và:
-1. Xác định bệnh/vấn đề (nếu có)
-2. Đánh giá mức độ nghiêm trọng (nhẹ/trung bình/nặng)
-3. Đề xuất hướng xử lý
-4. Trả về JSON với format: { "disease": string, "severity": "mild"|"moderate"|"severe", "summary": string, "confidence": number (0-1), "keywords": string[] }`;
+  const prompt = `Bạn là chuyên gia nông nghiệp của VFC. Hãy phân tích hình ảnh cây trồng${cropType ? ` (loại: ${cropType})` : ""} và:
+1. Xác định bệnh/vấn đề (nếu có). Cung cấp thông tin chi tiết tên bệnh.
+2. Đánh giá mức độ bệnh theo thang của riêng bệnh đó (nếu có), hoặc đánh giá mức độ chung chung (nhẹ/trung bình/nặng).
+3. Đề xuất hướng xử lý.
+4. CHỌN ra tối đa 3 sản phẩm PHÙ HỢP NHẤT từ danh sách dưới đây dựa trên công dụng của chúng:
+${JSON.stringify(productContext, null, 2)}
+
+Đối với mỗi sản phẩm đề nghị, phải ghi rõ CÔNG DỤNG RÕ RÀNG đối với tình trạng bệnh của cây đang hỏi trong phần "reasons".
+
+Trả về kết quả dưới dạng JSON thuần túy (không có markdown) với format: 
+{ 
+  "disease": "tên bệnh (kèm thông tin chi tiết)", 
+  "severity": "mức độ bệnh (theo thang riêng của bệnh hoặc nhẹ/trung bình/nặng)", 
+  "summary": "tóm tắt ngắn gọn hướng xử lý", 
+  "confidence": 0-1,
+  "suggestedProductIds": ["id_san_pham_1", "id_san_pham_2"],
+  "reasons": { "id_san_pham_1": "công dụng rõ ràng của sản phẩm đối với tình trạng cây đang hỏi" }
+}`;
 
   try {
-    // Build parts with actual image data
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const parts: any[] = [{ text: prompt }];
 
     for (const url of imageUrls) {
       const filePath = path.join(process.cwd(), "public", url);
-      const data = await fs.readFile(filePath);
+      let data: any = await fs.readFile(filePath);
       parts.push({
         inlineData: {
           data: data.toString("base64"),
-          mimeType: "image/jpeg" // assume jpeg for simplicity, or detect from ext
+          mimeType: "image/jpeg"
         }
       });
+      // Free buffer memory
+      data = null;
     }
 
     const result = await model.generateContent(parts);
     const text = result.response.text();
+    
+    // Clear parts array memory
+    parts.length = 0;
 
-    // Parse JSON from AI response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: text, confidence: 0.5 };
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    
+    if (!parsed) throw new Error("AI failed to return valid JSON");
 
-    // Find matching products by keywords
-    const keywords: string[] = parsed.keywords ?? [];
-    const suggestedProducts = keywords.length
-      ? await prisma.product.findMany({
-          where: {
-            isActive: true,
-            tags: { hasSome: keywords },
-          },
-          take: 5,
-          orderBy: { createdAt: "desc" },
-        })
-      : [];
-
+    const suggestedProductIds: string[] = parsed.suggestedProductIds ?? [];
+    
     await prisma.plantDiagnosis.update({
       where: { id: diagnosisId },
       data: {
@@ -142,19 +172,19 @@ async function runAiDiagnosis(
         confidence: parsed.confidence,
         status: DiagnosisStatus.DONE,
         suggestions: {
-          create: suggestedProducts.map((p: any, i: number) => ({
-            productId: p.id,
-            reason: `Phù hợp với triệu chứng: ${parsed.disease ?? "không xác định"}`,
+          create: suggestedProductIds.map((pid: string, i: number) => ({
+            productId: pid,
+            reason: parsed.reasons?.[pid] || `Phù hợp với triệu chứng: ${parsed.disease}`,
             rank: i + 1,
           })),
         },
       },
     });
   } catch (err) {
+    console.error("[AI Diagnosis Error]", err);
     await prisma.plantDiagnosis.update({
       where: { id: diagnosisId },
       data: { status: DiagnosisStatus.FAILED },
     });
-    throw err;
   }
 }

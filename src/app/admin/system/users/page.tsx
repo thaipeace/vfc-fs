@@ -401,6 +401,7 @@ export default function UserManagementPage() {
                   <option value="FARMER">FARMER</option>
                   <option value="SALE">SALE (Nhân viên kinh doanh)</option>
                   <option value="AGENCY">AGENCY (Đại lý)</option>
+
                   <option value="MDO">MDO (Quảng bá sản phẩm)</option>
                   <option value="SE">SE (Kỹ sư khu vực)</option>
                   <option value="BGD">BGD (Ban giám đốc)</option>

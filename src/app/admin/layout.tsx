@@ -18,6 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const menuItems = [
     { href: "/admin", icon: "📈", label: "Tổng quan", alwaysShow: true },
+    { href: "/admin/products", icon: "📦", label: "Sản phẩm", alwaysShow: false },
     { href: "/admin/system/users", icon: "👤", label: "Người dùng", alwaysShow: false },
   ].filter(item => item.alwaysShow || user?.role === "ADMIN");
 

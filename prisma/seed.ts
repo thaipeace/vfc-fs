@@ -2,12 +2,16 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import "dotenv/config";
+import * as fs from 'fs';
+import { parse } from 'csv-parse/sync';
+import path from 'path';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // --- Seed Crops ---
   const cropList = [
     "01.Cây Lúa 95-100",
     "02.Cây Lúa Nhật DS1",
@@ -78,6 +82,83 @@ async function main() {
   }
 
   console.log('Seeded crops successfully');
+
+  // --- Seed Product Details from CSV ---
+  const csvFilePath = path.join(process.cwd(), 'document', 'Product details.csv');
+  if (fs.existsSync(csvFilePath)) {
+    const fileContent = fs.readFileSync(csvFilePath, 'utf-8');
+    const records = parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    }) as any[];
+
+    console.log(`Found ${records.length} records in CSV for products.`);
+
+    for (const record of records) {
+      const name = record['Name'];
+      const plantCrops = record['Plant crops'];
+      const type = record['Type'];
+      const ingredients = record['Ingredients'];
+      const targetDiseases = record['Target Diseases/Nutrient'];
+      const usageInstruction = record['Usage Instruction'];
+      const description = record['Description'];
+
+      if (!name) continue;
+
+      let product = await prisma.product.findFirst({
+        where: { name: { contains: name, mode: 'insensitive' } },
+      });
+
+      if (!product) {
+        console.log(`Product "${name}" not found, creating skeleton product...`);
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        let finalSlug = slug;
+        let counter = 1;
+        while (await prisma.product.findUnique({ where: { slug: finalSlug } })) {
+          finalSlug = `${slug}-${counter}`;
+          counter++;
+        }
+
+        product = await prisma.product.create({
+          data: {
+            name,
+            sku: `SKU-${finalSlug.toUpperCase()}`,
+            slug: finalSlug,
+            price: 0,
+            isActive: true,
+          },
+        });
+      }
+
+      await prisma.productDetail.upsert({
+        where: { productId: product.id },
+        update: {
+          name,
+          plantCrops,
+          type,
+          ingredients,
+          targetDiseases,
+          usageInstruction,
+          description,
+        },
+        create: {
+          productId: product.id,
+          name,
+          plantCrops,
+          type,
+          ingredients,
+          targetDiseases,
+          usageInstruction,
+          description,
+        },
+      });
+    }
+    console.log('Seeded product details successfully');
+  } else {
+    console.warn(`CSV file not found at ${csvFilePath}`);
+  }
 }
 
 main()
