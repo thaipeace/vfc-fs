@@ -12,7 +12,12 @@ export function FarmerHeader() {
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          window.location.href = "/";
+        }
+        return r.json();
+      })
       .then((d) => setRole(d.user?.role ?? "FARMER"))
       .catch(() => {});
   }, []);

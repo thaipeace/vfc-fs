@@ -38,15 +38,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
     }
 
+    // 1. Verify user exists
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 401 });
+    }
+
+    // 2. Filter valid cropIds to prevent crop_id_fkey violations
+    const validCrops = await prisma.crop.findMany({
+      where: { id: { in: cropIds } },
+      select: { id: true }
+    });
+    const validCropIds = validCrops.map(c => c.id);
+
     // Replace all crops for this user
     await prisma.$transaction([
       prisma.userCrop.deleteMany({ where: { userId } }),
-      prisma.userCrop.createMany({
-        data: cropIds.map(cropId => ({
-          userId,
-          cropId
-        }))
-      })
+      ...(validCropIds.length > 0 ? [
+        prisma.userCrop.createMany({
+          data: validCropIds.map(cropId => ({
+            userId,
+            cropId
+          }))
+        })
+      ] : [])
     ]);
 
     return NextResponse.json({ success: true });

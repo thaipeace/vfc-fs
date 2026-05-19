@@ -18,43 +18,36 @@ export async function POST(request: NextRequest) {
   const files = formData.getAll("images") as File[];
   if (!files.length) return apiError("NO_IMAGES", 400);
 
-  // Save actual files to public/uploads
-  const fs = await import("node:fs/promises");
-  const path = await import("node:path");
+  const base64Images: string[] = [];
   const sharp = (await import("sharp")).default;
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-  
-  // Ensure directory exists
-  await fs.mkdir(uploadDir, { recursive: true });
 
   for (const file of files) {
     let buffer: any = Buffer.from(await file.arrayBuffer());
-    const name = `${Date.now()}_${file.name.replace(/[^a-z0-9.]/gi, "_")}.jpg`;
-    const filePath = path.join(uploadDir, name);
-    
+
     // Optimize image: resize to max 512px and compress aggressively
-    await sharp(buffer)
+    const optimizedBuffer = await sharp(buffer)
       .resize(512, 512, { fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: 60 })
-      .toFile(filePath);
+      .toBuffer();
+
+    base64Images.push(optimizedBuffer.toString("base64"));
 
     // Free up buffer memory
     buffer = null;
-    imageUrls.push(`/uploads/${name}`);
   }
 
   const diagnosis = await prisma.plantDiagnosis.create({
     data: {
       userId: user.id,
       cropType,
-      imageUrls,
+      imageUrls: [], // Không lưu ảnh vào hệ thống
       status: DiagnosisStatus.PROCESSING,
     },
   });
 
   // Fire-and-forget AI analysis (non-blocking)
-  runAiDiagnosis(diagnosis.id, imageUrls, cropType ?? undefined).catch(
-    (err) => console.error("[AI Diagnosis Error]", err)
+  runAiDiagnosis(diagnosis.id, base64Images, cropType ?? undefined).catch((err) =>
+    console.error("[AI Diagnosis Error]", err),
   );
 
   return apiOk({ id: diagnosis.id, status: "PROCESSING" }, 202);
@@ -75,7 +68,9 @@ export async function GET(request: NextRequest) {
       where: { userId: user.id },
       include: {
         suggestions: {
-          include: { product: { select: { name: true, imageUrls: true, slug: true } } },
+          include: {
+            product: { select: { name: true, imageUrls: true, slug: true } },
+          },
           orderBy: { rank: "asc" },
         },
       },
@@ -92,8 +87,8 @@ export async function GET(request: NextRequest) {
 
 async function runAiDiagnosis(
   diagnosisId: string,
-  imageUrls: string[],
-  cropType?: string
+  base64Images: string[],
+  cropType?: string,
 ) {
   // 1. Fetch all available products and their targets for AI context
   const allProducts = await prisma.product.findMany({
@@ -101,17 +96,17 @@ async function runAiDiagnosis(
     include: { detail: true },
   });
 
-  const productContext = allProducts.map(p => ({
+  const productContext = allProducts.map((p) => ({
     id: p.id,
     name: p.name,
-    targets: p.detail?.targetDiseases || ""
+    targets: p.detail?.targetDiseases || "",
     // Dropped 'usage' to save huge amounts of memory in JSON stringification
   }));
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-flash-latest" 
+  const model = genAI.getGenerativeModel({
+    model: "gemini-flash-latest",
   });
 
   const prompt = `Bạn là chuyên gia nông nghiệp của VFC. Hãy phân tích hình ảnh cây trồng${cropType ? ` (loại: ${cropType})` : ""} và:
@@ -134,36 +129,30 @@ Trả về kết quả dưới dạng JSON thuần túy (không có markdown) v�
 }`;
 
   try {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
     const parts: any[] = [{ text: prompt }];
 
-    for (const url of imageUrls) {
-      const filePath = path.join(process.cwd(), "public", url);
-      let data: any = await fs.readFile(filePath);
+    for (const base64Data of base64Images) {
       parts.push({
         inlineData: {
-          data: data.toString("base64"),
-          mimeType: "image/jpeg"
-        }
+          data: base64Data,
+          mimeType: "image/jpeg",
+        },
       });
-      // Free buffer memory
-      data = null;
     }
 
     const result = await model.generateContent(parts);
     const text = result.response.text();
-    
+
     // Clear parts array memory
     parts.length = 0;
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    
+
     if (!parsed) throw new Error("AI failed to return valid JSON");
 
     const suggestedProductIds: string[] = parsed.suggestedProductIds ?? [];
-    
+
     await prisma.plantDiagnosis.update({
       where: { id: diagnosisId },
       data: {
@@ -174,7 +163,9 @@ Trả về kết quả dưới dạng JSON thuần túy (không có markdown) v�
         suggestions: {
           create: suggestedProductIds.map((pid: string, i: number) => ({
             productId: pid,
-            reason: parsed.reasons?.[pid] || `Phù hợp với triệu chứng: ${parsed.disease}`,
+            reason:
+              parsed.reasons?.[pid] ||
+              `Phù hợp với triệu chứng: ${parsed.disease}`,
             rank: i + 1,
           })),
         },

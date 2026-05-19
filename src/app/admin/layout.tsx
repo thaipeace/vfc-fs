@@ -11,7 +11,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.status === 401) {
+          window.location.href = "/";
+        }
+        return res.json();
+      })
       .then((data) => setUser(data.user))
       .catch(() => {});
   }, []);

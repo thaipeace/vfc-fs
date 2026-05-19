@@ -19,6 +19,8 @@ export default function FarmerHomePage() {
         if (userRes.ok) {
           const userData = await userRes.json();
           setUser(userData.user);
+        } else if (userRes.status === 401) {
+          window.location.href = "/";
         }
       } catch (err) {
         console.error("Fetch error:", err);

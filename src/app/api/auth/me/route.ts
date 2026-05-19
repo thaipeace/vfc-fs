@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -9,13 +9,15 @@ export async function GET(_req: NextRequest) {
   const session = token ? await verifyToken(token) : null;
 
   if (!session) {
-    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const response = NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    response.cookies.delete(COOKIE_NAME);
+    return response;
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.sub } });
 
   if (!user || user.sessionToken !== session.sessionId) {
-    return Response.json(
+    const response = NextResponse.json(
       {
         error: "UNAUTHORIZED",
         debug: {
@@ -25,7 +27,10 @@ export async function GET(_req: NextRequest) {
       },
       { status: 401 },
     );
+    response.cookies.delete(COOKIE_NAME);
+    return response;
   }
+
 
   return Response.json({
     user: {
