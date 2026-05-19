@@ -13,7 +13,7 @@ async function main() {
     columns: true,
     skip_empty_lines: true,
     trim: true,
-  });
+  }) as any[];
 
   console.log(`Found ${records.length} records in Products.csv`);
 
