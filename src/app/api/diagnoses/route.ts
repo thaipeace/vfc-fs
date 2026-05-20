@@ -47,14 +47,18 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Fire-and-forget AI analysis (non-blocking) wrapped in `after` to prevent serverless termination
-  after(() => {
-    runAiDiagnosis(diagnosis.id, base64Images, cropType ?? undefined).catch((err) =>
-      console.error("[AI Diagnosis Error]", err),
-    );
+  // Await AI analysis to prevent Vercel from killing the serverless function mid-execution
+  try {
+    await runAiDiagnosis(diagnosis.id, base64Images, cropType ?? undefined);
+  } catch (err) {
+    console.error("[POST AI Diagnosis Error]", err);
+  }
+
+  const updatedDiagnosis = await prisma.plantDiagnosis.findUnique({
+    where: { id: diagnosis.id },
   });
 
-  return apiOk({ id: diagnosis.id, status: "PROCESSING" }, 202);
+  return apiOk(updatedDiagnosis || { id: diagnosis.id, status: "PROCESSING" }, 200);
 }
 
 // GET /api/diagnoses — farmer sees own diagnoses
@@ -73,7 +77,7 @@ export async function GET(request: NextRequest) {
       include: {
         suggestions: {
           include: {
-            product: { select: { name: true, imageUrls: true, slug: true } },
+            product: { select: { name: true, imageUrls: true, slug: true, price: true } },
           },
           orderBy: { rank: "asc" },
         },

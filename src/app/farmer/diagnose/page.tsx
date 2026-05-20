@@ -15,7 +15,12 @@ type DiagnosisResult = {
   suggestions?: Array<{
     rank: number;
     reason: string;
-    product?: { name: string; imageUrls: string[]; slug: string };
+    product?: {
+      name: string;
+      imageUrls: string[];
+      slug: string;
+      price?: number;
+    };
   }>;
 };
 
@@ -27,10 +32,44 @@ export default function DiagnosePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [error, setError] = useState("");
+  const [blockedTimeRemaining, setBlockedTimeRemaining] = useState<number>(0);
 
   useEffect(() => {
     fetchUserCrops();
   }, [fetchUserCrops]);
+
+  // Kiểm tra trạng thái block từ localStorage mỗi giây
+  useEffect(() => {
+    const checkBlock = () => {
+      const dataStr = localStorage.getItem("vfc_diagnose_rate_limit");
+      if (dataStr) {
+        try {
+          const data = JSON.parse(dataStr);
+          const today = new Date().toDateString();
+          
+          // Reset nếu phát hiện sang ngày mới
+          if (data.lastActiveDate && data.lastActiveDate !== today) {
+            localStorage.removeItem("vfc_diagnose_rate_limit");
+            setBlockedTimeRemaining(0);
+            return;
+          }
+
+          const now = Date.now();
+          if (data.blockedUntil && now < data.blockedUntil) {
+            setBlockedTimeRemaining(Math.ceil((data.blockedUntil - now) / 1000));
+          } else {
+            setBlockedTimeRemaining(0);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+
+    checkBlock();
+    const interval = setInterval(checkBlock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -47,6 +86,50 @@ export default function DiagnosePage() {
       setError("Vui lòng chọn loại cây trồng trước khi phân tích");
       return;
     }
+
+    // Đọc thông tin rate limit từ localStorage
+    const now = Date.now();
+    const today = new Date().toDateString();
+    const dataStr = localStorage.getItem("vfc_diagnose_rate_limit");
+    let limitData = { triggers: [] as number[], blockedUntil: 0, penaltyCount: 0, lastActiveDate: today };
+    
+    if (dataStr) {
+      try {
+        const parsed = JSON.parse(dataStr);
+        // Nếu phát hiện sang ngày mới, reset toàn bộ lịch sử vi phạm
+        if (parsed.lastActiveDate && parsed.lastActiveDate !== today) {
+          limitData = { triggers: [] as number[], blockedUntil: 0, penaltyCount: 0, lastActiveDate: today };
+        } else {
+          limitData = { ...parsed, lastActiveDate: today };
+        }
+      } catch (e) {}
+    } else {
+      limitData.lastActiveDate = today;
+    }
+
+    // Lọc bỏ các trigger cũ hơn 1 phút
+    const oneMinuteAgo = now - 60000;
+    const activeTriggers = (limitData.triggers || []).filter((t: number) => t > oneMinuteAgo);
+    
+    activeTriggers.push(now);
+    limitData.triggers = activeTriggers;
+
+    // Nếu số lần trigger vượt quá 3 lần trong 1 phút
+    if (activeTriggers.length > 3) {
+      const nextPenaltyCount = (limitData.penaltyCount || 0) + 1;
+      // Lũy tiến x10 lần thời gian phạt: Lần 1: 2m, Lần 2: 20m, Lần 3 trở đi: 200m (tối đa 200m)
+      const penaltyMinutes = Math.min(200, 2 * Math.pow(10, nextPenaltyCount - 1));
+      limitData.blockedUntil = now + penaltyMinutes * 60 * 1000;
+      limitData.penaltyCount = nextPenaltyCount;
+      
+      localStorage.setItem("vfc_diagnose_rate_limit", JSON.stringify(limitData));
+      setBlockedTimeRemaining(penaltyMinutes * 60);
+      setError(`Bạn đang thao tác quá nhanh. Vui lòng đợi trong ${penaltyMinutes} phút.`);
+      return;
+    }
+
+    localStorage.setItem("vfc_diagnose_rate_limit", JSON.stringify(limitData));
+
     setError("");
     setLoading(true);
     setResult(null);
@@ -83,71 +166,108 @@ export default function DiagnosePage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-neutral-800">📷 Chuẩn đoán bệnh cây</h1>
-        <p className="mt-1 text-sm text-neutral-500">Chụp hoặc chọn ảnh cây để AI phân tích</p>
+        <h1 className="text-2xl font-bold text-neutral-800">
+          📷 Chuẩn đoán bệnh cây
+        </h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          Chụp hoặc chọn ảnh cây để AI phân tích
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="card flex flex-col gap-4">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-            Chọn cây trồng cần chuẩn đoán
-          </label>
-          <select
-            value={cropType}
-            onChange={(e) => {
-              setCropType(e.target.value);
-              setPreviews([]);
-              if (fileRef.current) fileRef.current.value = "";
-            }}
-            className="input-field"
-          >
-            <option value="">-- Chọn cây trồng --</option>
-            {userCrops.map((c) => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+      {blockedTimeRemaining > 0 ? (
+        <div className="card flex flex-col items-center justify-center py-10 px-6 text-center border-2 border-red-200 bg-red-50/30 rounded-2xl shadow-sm animate-fade-in">
+          <span className="text-4xl mb-3 animate-bounce">⚠️</span>
+          <h2 className="text-lg sm:text-xl font-black text-red-800">
+            Bạn đang thao tác quá nhanh!
+          </h2>
+          <p className="mt-2 text-sm text-neutral-600 max-w-md">
+            Hệ thống phát hiện bạn đã yêu cầu chẩn đoán quá nhiều lần. Để đảm bảo hiệu năng hệ thống, vui lòng chờ:
+          </p>
+          <div className="mt-5 px-6 py-3 bg-red-100/80 border border-red-200 rounded-2xl text-2xl sm:text-3xl font-black text-red-700 tracking-wider shadow-inner">
+            {Math.floor(blockedTimeRemaining / 60)}ph {(blockedTimeRemaining % 60)}s
+          </div>
+          <p className="mt-4 text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
+            (Thời gian khóa tăng gấp 10 lần nếu tiếp tục gửi yêu cầu liên tục)
+          </p>
         </div>
-
-        {/* Image drop zone */}
-        <div
-          onClick={() => cropType && fileRef.current?.click()}
-          className={`flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition ${
-            !cropType 
-              ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60" 
-              : "border-green-300 bg-green-50 cursor-pointer hover:bg-green-100"
-          }`}
-        >
-          {previews.length > 0 ? (
-            <div className="flex flex-wrap gap-2 p-2">
-              {previews.map((p, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={p} alt="" className="h-24 w-24 rounded-lg object-cover" />
+      ) : (
+        <form onSubmit={handleSubmit} className="card flex flex-col gap-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+              Chọn cây trồng cần chuẩn đoán
+            </label>
+            <select
+              value={cropType}
+              onChange={(e) => {
+                setCropType(e.target.value);
+                setPreviews([]);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+              className="input-field"
+            >
+              <option value="">-- Chọn cây trồng --</option>
+              {userCrops.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
               ))}
-            </div>
-          ) : (
-            <>
-              <span className="text-3xl">🌿</span>
-              <span className={`text-sm font-medium ${!cropType ? "text-neutral-400" : "text-green-700"}`}>
-                {cropType ? "Nhấn để chụp hoặc chọn ảnh" : "Vui lòng chọn cây trước"}
-              </span>
-              <span className="text-xs text-neutral-400">Chỉ chọn 1 ảnh</span>
-            </>
-          )}
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
+            </select>
+          </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+          {/* Image drop zone */}
+          <div
+            onClick={() => cropType && fileRef.current?.click()}
+            className={`flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition ${
+              !cropType
+                ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
+                : "border-green-300 bg-green-50 cursor-pointer hover:bg-green-100"
+            }`}
+          >
+            {previews.length > 0 ? (
+              <div className="flex flex-wrap gap-2 p-2">
+                {previews.map((p, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src={p}
+                    alt=""
+                    className="h-24 w-24 rounded-lg object-cover"
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <span className="text-3xl">🌿</span>
+                <span
+                  className={`text-sm font-medium ${!cropType ? "text-neutral-400" : "text-green-700"}`}
+                >
+                  {cropType
+                    ? "Nhấn để chụp hoặc chọn ảnh"
+                    : "Vui lòng chọn cây trước"}
+                </span>
+                <span className="text-xs text-neutral-400">Chỉ chọn 1 ảnh</span>
+              </>
+            )}
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
 
-        <button type="submit" className="btn-primary" disabled={loading || !previews.length}>
-          {loading ? "Đang phân tích..." : "🔍 Phân tích bệnh"}
-        </button>
-      </form>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={loading || !previews.length}
+          >
+            {loading ? "Đang phân tích..." : "🔍 Phân tích bệnh"}
+          </button>
+        </form>
+      )}
 
       {/* Result */}
       {result && (
@@ -159,74 +279,196 @@ export default function DiagnosePage() {
                 result.status === "DONE"
                   ? "bg-green-100 text-green-700"
                   : result.status === "FAILED"
-                  ? "bg-red-100 text-red-600"
-                  : "bg-yellow-100 text-yellow-700"
+                    ? "bg-red-100 text-red-600"
+                    : "bg-yellow-100 text-yellow-700"
               }`}
             >
-              {result.status === "PROCESSING" ? "Đang xử lý..." : result.status === "DONE" ? "Hoàn tất" : "Thất bại"}
+              {result.status === "PROCESSING"
+                ? "Đang xử lý..."
+                : result.status === "DONE"
+                  ? "Hoàn tất"
+                  : "Thất bại"}
             </span>
           </div>
 
           {result.status === "PROCESSING" && (
-            <div className="flex items-center gap-3 text-sm text-neutral-500">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
-              AI đang phân tích hình ảnh...
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-green-50/30 rounded-2xl border border-green-100/50">
+              <div className="relative mb-4">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-green-500 border-t-transparent" />
+                <span className="absolute inset-0 flex items-center justify-center text-lg">
+                  🔍
+                </span>
+              </div>
+              <p className="text-base font-bold text-green-800 mb-1">
+                Đang chẩn đoán hình ảnh cây trồng...
+              </p>
+              <p className="max-w-md text-xs text-neutral-500 leading-relaxed">
+                Hệ thống đang quét triệu chứng qua AI và đối chiếu danh mục sản
+                phẩm của VFC. Quá trình này mất khoảng 5 - 10 giây, vui lòng
+                không tắt trình duyệt.
+              </p>
             </div>
           )}
 
           {result.status === "DONE" && result.summary && (
             <>
-              <div className="rounded-xl border border-neutral-100 bg-neutral-50/50 p-3">
-                {result.rawAiResponse?.disease && (
-                  <p className="text-sm font-medium text-neutral-800">
-                    Bệnh: <span className="font-normal">{result.rawAiResponse.disease}</span>
-                  </p>
-                )}
+              {/* Highlighted Disease Diagnostic Box */}
+              <div className="rounded-2xl border-l-4 border-red-500 bg-red-50/40 p-4 sm:p-5 shadow-sm transition hover:shadow-md">
+                {result.rawAiResponse?.disease &&
+                  (() => {
+                    const diseaseStr = result.rawAiResponse.disease;
+                    const openParenIdx = diseaseStr.indexOf("(");
+                    let main = diseaseStr;
+                    let details = "";
+
+                    if (openParenIdx !== -1) {
+                      main = diseaseStr.slice(0, openParenIdx).trim();
+                      details = diseaseStr.slice(openParenIdx).trim();
+                    } else {
+                      const dashIdx = diseaseStr.indexOf(" - ");
+                      if (dashIdx !== -1) {
+                        main = diseaseStr.slice(0, dashIdx).trim();
+                        details = diseaseStr.slice(dashIdx + 3).trim();
+                      }
+                    }
+
+                    return (
+                      <div className="mb-2">
+                        <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                          Kết quả Chẩn đoán bệnh
+                        </span>
+                        <h2 className="mt-1 text-xl sm:text-2xl font-black text-red-800 leading-tight">
+                          {main}
+                        </h2>
+                        {details && (
+                          <p className="mt-1.5 text-xs sm:text-sm text-neutral-600 font-medium italic leading-relaxed">
+                            {details}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 {result.rawAiResponse?.severity && (
-                  <p className="mb-2 text-xs text-neutral-500">
-                    Mức độ: {result.rawAiResponse.severity}
+                  <p className="text-sm font-bold text-neutral-700">
+                    Mức độ nghiêm trọng:{" "}
+                    <span className="font-bold text-red-600 px-2 py-0.5">
+                      {result.rawAiResponse.severity}
+                    </span>
                   </p>
                 )}
-                <p className="text-xs text-neutral-600 leading-relaxed">{result.summary}</p>
+                <div className="mt-4 border-t border-neutral-200/60 pt-3">
+                  <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                    Hướng xử lý đề xuất:
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-600 leading-relaxed font-medium">
+                    {result.summary}
+                  </p>
+                </div>
               </div>
 
               {result.suggestions && result.suggestions.length > 0 && (
-                <div className="mt-2">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-green-600">
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-green-600 text-base shadow-sm">
                       ✨
                     </span>
-                    <h3 className="text-lg font-bold text-green-800">Sản phẩm chuyên trị khuyên dùng</h3>
+                    <h3 className="text-lg font-bold text-green-800">
+                      Sản phẩm khuyến dùng đặc trị
+                    </h3>
                   </div>
-                  <div className="flex flex-col gap-3">
-                    {result.suggestions.map((s) => (
-                      <div key={s.rank} className="relative flex flex-col sm:flex-row gap-4 rounded-2xl border-2 border-green-100 bg-gradient-to-br from-white to-green-50/50 p-4 shadow-sm transition hover:border-green-300 hover:shadow-md overflow-hidden">
-                        {/* Cột trái: Hình ảnh */}
-                        <div className="h-20 w-20 flex-shrink-0 rounded-xl bg-white border border-neutral-100 p-1">
-                          {s.product?.imageUrls?.[0] ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={s.product.imageUrls[0]} alt={s.product.name} className="h-full w-full object-contain" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center rounded-lg bg-neutral-50 text-2xl">🧪</div>
+                  <div className="flex flex-col gap-4">
+                    {result.suggestions.map((s) => {
+                      const isBestMatch = s.rank === 1;
+                      return (
+                        <div
+                          key={s.rank}
+                          className={`relative flex flex-col sm:flex-row gap-4 sm:gap-6 rounded-2xl p-5 shadow-sm transition-all duration-300 overflow-hidden ${
+                            isBestMatch
+                              ? "border-2 border-green-500 bg-gradient-to-br from-green-50/60 via-white to-green-100/30 hover:shadow-lg hover:border-green-600 scale-[1.01]"
+                              : "border border-neutral-200 bg-white hover:border-neutral-300 hover:shadow-md"
+                          }`}
+                        >
+                          {/* Cột trái: Hình ảnh */}
+                          <div
+                            className={`mx-auto sm:mx-0 flex-shrink-0 rounded-xl bg-white border border-neutral-100 p-2 ${
+                              isBestMatch ? "h-28 w-28" : "h-20 w-20"
+                            } flex items-center justify-center shadow-sm`}
+                          >
+                            {s.product?.imageUrls?.[0] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={s.product.imageUrls[0]}
+                                alt={s.product.name}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center rounded-lg bg-neutral-50 text-2xl">
+                                🧪
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Cột phải: Thông tin */}
+                          <div className="flex-1 min-w-0 flex flex-col justify-between gap-3 text-center sm:text-left">
+                            <div>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-wrap justify-center sm:justify-start">
+                                <p
+                                  className={`font-black text-neutral-800 ${isBestMatch ? "text-lg sm:text-xl" : "text-base"}`}
+                                >
+                                  {s.product?.name ?? "Sản phẩm"}
+                                </p>
+                                {isBestMatch && (
+                                  <span className="inline-block mx-auto sm:mx-0 rounded-full bg-green-200/60 px-2.5 py-0.5 text-[10px] font-black text-green-800 uppercase tracking-wider">
+                                    Đề xuất tối ưu
+                                  </span>
+                                )}
+                              </div>
+
+                              {s.product?.price ? (
+                                <p
+                                  className={`font-black text-sm mt-1 ${isBestMatch ? "text-green-700" : "text-neutral-500"}`}
+                                >
+                                  Giá bán:{" "}
+                                  <span
+                                    className={
+                                      isBestMatch
+                                        ? "text-lg text-green-600"
+                                        : "text-neutral-700"
+                                    }
+                                  >
+                                    {new Intl.NumberFormat("vi-VN", {
+                                      style: "currency",
+                                      currency: "VND",
+                                    }).format(s.product.price)}
+                                  </span>
+                                </p>
+                              ) : (
+                                <p className="text-xs text-neutral-400 mt-1">
+                                  Liên hệ đại lý
+                                </p>
+                              )}
+                            </div>
+
+                            <div
+                              className={`rounded-xl p-3 text-left ${isBestMatch ? "bg-green-100/40 border border-green-200/30" : "bg-neutral-50 border border-neutral-100"}`}
+                            >
+                              <p
+                                className={`text-sm leading-relaxed ${isBestMatch ? "font-semibold text-green-900" : "text-neutral-600"}`}
+                              >
+                                {s.reason}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Top Rank Badge */}
+                          {isBestMatch && (
+                            <div className="absolute top-0 right-0 rounded-bl-xl bg-green-600 px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                              Phù hợp nhất
+                            </div>
                           )}
                         </div>
-                        
-                        {/* Cột phải: Thông tin */}
-                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <p className="font-bold text-base text-neutral-800 mb-1">{s.product?.name ?? "Sản phẩm"}</p>
-                          <div className="inline-flex rounded-lg bg-green-100/50 p-2.5">
-                            <p className="text-sm font-medium text-green-800 leading-relaxed">{s.reason}</p>
-                          </div>
-                        </div>
-
-                        {/* Top Rank Badge */}
-                        {s.rank === 1 && (
-                          <div className="absolute top-0 right-0 rounded-bl-xl bg-orange-500 px-3 py-1 text-xs font-bold text-white shadow-sm">
-                            Phù hợp nhất
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
