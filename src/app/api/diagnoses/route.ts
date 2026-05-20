@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getRequestUser, apiError, apiOk } from "@/lib/request";
 import { DiagnosisStatus } from "@prisma/client";
 
+export const maxDuration = 60; // Tăng timeout cho Vercel Serverless Function (tối đa 60s cho Hobby)
+
 // POST /api/diagnoses — farmer submits photo for AI diagnosis
 export async function POST(request: NextRequest) {
   const user = await getRequestUser(request);
@@ -24,10 +26,10 @@ export async function POST(request: NextRequest) {
   for (const file of files) {
     let buffer: any = Buffer.from(await file.arrayBuffer());
 
-    // Optimize image: resize to max 512px and compress aggressively
+    // Optimize image: resize to max 256px and compress aggressively
     const optimizedBuffer = await sharp(buffer)
-      .resize(512, 512, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 60 })
+      .resize(256, 256, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 40 })
       .toBuffer();
 
     base64Images.push(optimizedBuffer.toString("base64"));
@@ -92,6 +94,8 @@ async function runAiDiagnosis(
   base64Images: string[],
   cropType?: string,
 ) {
+  console.log(`[AI Diagnosis Start] ID: ${diagnosisId}, Crop: ${cropType || "N/A"}, Images count: ${base64Images.length}`);
+  
   // 1. Fetch all available products and their targets for AI context
   const allProducts = await prisma.product.findMany({
     where: { isActive: true },
@@ -102,8 +106,15 @@ async function runAiDiagnosis(
     id: p.id,
     name: p.name,
     targets: p.detail?.targetDiseases || "",
-    // Dropped 'usage' to save huge amounts of memory in JSON stringification
   }));
+
+  console.log(`[AI Diagnosis Context] Products count: ${productContext.length}`);
+
+  const hasApiKey = !!process.env.GEMINI_API_KEY;
+  console.log(`[AI Diagnosis API Key Check] Key exists: ${hasApiKey}`);
+  if (!hasApiKey) {
+    throw new Error("GEMINI_API_KEY is not defined in environment variables");
+  }
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -116,7 +127,7 @@ async function runAiDiagnosis(
 2. Đánh giá mức độ bệnh theo thang của riêng bệnh đó (nếu có), hoặc đánh giá mức độ chung chung (nhẹ/trung bình/nặng).
 3. Đề xuất hướng xử lý.
 4. CHỌN ra tối đa 3 sản phẩm PHÙ HỢP NHẤT từ danh sách dưới đây dựa trên công dụng của chúng:
-${JSON.stringify(productContext, null, 2)}
+${JSON.stringify(productContext)}
 
 Đối với mỗi sản phẩm đề nghị, phải ghi rõ CÔNG DỤNG RÕ RÀNG đối với tình trạng bệnh của cây đang hỏi trong phần "reasons".
 
@@ -133,7 +144,9 @@ Trả về kết quả dưới dạng JSON thuần túy (không có markdown) v�
   try {
     const parts: any[] = [{ text: prompt }];
 
-    for (const base64Data of base64Images) {
+    for (let idx = 0; idx < base64Images.length; idx++) {
+      const base64Data = base64Images[idx];
+      console.log(`[AI Diagnosis Payload] Image ${idx} size: ${(base64Data.length * 0.75 / 1024).toFixed(2)} KB`);
       parts.push({
         inlineData: {
           data: base64Data,
@@ -142,18 +155,24 @@ Trả về kết quả dưới dạng JSON thuần túy (không có markdown) v�
       });
     }
 
+    console.log(`[AI Diagnosis API Call] Sending request to Gemini API...`);
     const result = await model.generateContent(parts);
     const text = result.response.text();
+    console.log(`[AI Diagnosis API Response] Received response. Text length: ${text.length}`);
 
     // Clear parts array memory
     parts.length = 0;
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error(`[AI Diagnosis Parse Error] No JSON block found in raw response. Raw text:`, text);
+    }
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
 
     if (!parsed) throw new Error("AI failed to return valid JSON");
 
     const suggestedProductIds: string[] = parsed.suggestedProductIds ?? [];
+    console.log(`[AI Diagnosis DB Update] Updating DB for ${diagnosisId}. Status: DONE, suggested products: ${suggestedProductIds.join(", ")}`);
 
     await prisma.plantDiagnosis.update({
       where: { id: diagnosisId },
@@ -173,8 +192,10 @@ Trả về kết quả dưới dạng JSON thuần túy (không có markdown) v�
         },
       },
     });
+    
+    console.log(`[AI Diagnosis Success] ID: ${diagnosisId}`, parsed);
   } catch (err) {
-    console.error("[AI Diagnosis Error]", err);
+    console.error(`[AI Diagnosis Error] ID: ${diagnosisId}`, err);
     await prisma.plantDiagnosis.update({
       where: { id: diagnosisId },
       data: { status: DiagnosisStatus.FAILED },
