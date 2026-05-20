@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequestUser, apiError, apiOk } from "@/lib/request";
 import { DiagnosisStatus } from "@prisma/client";
@@ -45,10 +45,12 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Fire-and-forget AI analysis (non-blocking)
-  runAiDiagnosis(diagnosis.id, base64Images, cropType ?? undefined).catch((err) =>
-    console.error("[AI Diagnosis Error]", err),
-  );
+  // Fire-and-forget AI analysis (non-blocking) wrapped in `after` to prevent serverless termination
+  after(() => {
+    runAiDiagnosis(diagnosis.id, base64Images, cropType ?? undefined).catch((err) =>
+      console.error("[AI Diagnosis Error]", err),
+    );
+  });
 
   return apiOk({ id: diagnosis.id, status: "PROCESSING" }, 202);
 }
